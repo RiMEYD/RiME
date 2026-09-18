@@ -1,256 +1,116 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>실시간 공유 텍스트 보드</title>
+  <meta charset="UTF-8">
+  <title>GitHub 파일 커밋 게시판</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f1f5f9;
-      color: #0f172a;
-      padding: 2rem 1rem;
-      display: flex;
-      justify-content: center;
-    }
-    .container {
-      width: 100%;
-      max-width: 680px;
-      background: #ffffff;
-      padding: 1.5rem;
-      border-radius: 12px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1.5rem;
-    }
-    .back-btn {
-      text-decoration: none;
-      color: #64748b;
-      font-size: 0.9rem;
-      font-weight: 500;
-    }
-    .back-btn:hover { color: #2563eb; }
-    h2 { font-size: 1.5rem; }
-    
-    .input-box {
-      margin-bottom: 1.5rem;
-    }
-    textarea {
-      width: 100%;
-      height: 100px;
-      padding: 0.75rem;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      resize: vertical;
-      font-size: 1rem;
-      outline: none;
-    }
-    textarea:focus { border-color: #2563eb; }
-    
-    .btn-row {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 0.5rem;
-    }
-    button.submit-btn {
-      background: #2563eb;
-      color: white;
-      border: none;
-      padding: 0.6rem 1.2rem;
-      border-radius: 6px;
-      font-size: 0.95rem;
-      cursor: pointer;
-      font-weight: 500;
-    }
-    button.submit-btn:hover { background: #1d4ed8; }
-
-    .list-title {
-      font-size: 1.1rem;
-      margin-bottom: 0.75rem;
-      font-weight: 600;
-      color: #334155;
-    }
-
-    .msg-card {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 1rem;
-      margin-bottom: 0.75rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-    .msg-text {
-      white-space: pre-wrap;
-      word-break: break-all;
-      font-size: 0.95rem;
-      line-height: 1.5;
-    }
-    .msg-meta {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.8rem;
-      color: #94a3b8;
-    }
-    .copy-btn {
-      background: #e2e8f0;
-      color: #1e293b;
-      border: none;
-      padding: 0.3rem 0.6rem;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.8rem;
-    }
-    .copy-btn:hover { background: #cbd5e1; }
-    .empty-state {
-      text-align: center;
-      color: #94a3b8;
-      padding: 2rem 0;
-    }
+    body { max-width: 600px; margin: 30px auto; font-family: sans-serif; }
+    input, textarea { width: 100%; margin: 8px 0; padding: 8px; box-sizing: border-box; }
+    button { padding: 10px 20px; background: #2ea44f; color: white; border: none; cursor: pointer; }
+    .post { border-bottom: 1px solid #ddd; padding: 10px 0; }
   </style>
 </head>
 <body>
+  <h2>GitHub JSON 기반 게시판</h2>
+  <input type="text" id="name" placeholder="작성자">
+  <textarea id="message" rows="3" placeholder="내용"></textarea>
+  <button id="saveBtn">GitHub에 커밋하기</button>
 
-  <div class="container">
-    <div class="header">
-      <h2>📋 실시간 텍스트 보드</h2>
-      <a href="./index.html" class="back-btn">← 메인으로</a>
-    </div>
-
-    <!-- 텍스트 등록 폼 -->
-    <div class="input-box">
-      <textarea id="textInput" placeholder="공유할 내용을 입력하세요... (모든 사람이 볼 수 있습니다)"></textarea>
-      <div class="btn-row">
-        <button class="submit-btn" id="saveBtn" onclick="saveMessage()">DB에 등록하기</button>
-      </div>
-    </div>
-
-    <!-- 실시간 목록 -->
-    <div class="list-title">등록된 텍스트 목록</div>
-    <div id="messagesList">
-      <div class="empty-state">내용을 불러오는 중...</div>
-    </div>
-  </div>
+  <div id="postsList"></div>
 
   <script>
-    // 공개 키-값 클라우드 DB 저장소 (kvdb.io 무료 엔드포인트)
-    const STORAGE_KEY = "my_shared_board_notes";
-    const API_URL = `https://kvdb.io/bucket_sample_for_tools/${STORAGE_KEY}`;
+    // ⚠️ 보안 경고: 실제 토큰이 공개되면 저장소 변조 위험이 있습니다.
+    const GITHUB_TOKEN = "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN";
+    const OWNER = "YOUR_GITHUB_USERNAME";
+    const REPO = "YOUR_REPO_NAME";
+    const FILE_PATH = "posts.json";
 
-    // 1. 데이터 불러오기
-    async function loadMessages() {
-      const listEl = document.getElementById("messagesList");
+    const apiEndpoint = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE_PATH}`;
+
+    // 1. GitHub에서 posts.json 파일 가져오기
+    async function fetchPosts() {
       try {
-        const res = await fetch(API_URL);
-        if (res.status === 404) {
-          listEl.innerHTML = '<div class="empty-state">아직 등록된 텍스트가 없습니다.</div>';
-          return;
-        }
-        const data = await res.json();
-        renderMessages(data);
-      } catch (err) {
-        // 네트워크 장애 시 로컬 임시 저장소 대체
-        const local = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-        renderMessages(local);
-      }
-    }
-
-    // 2. 화면에 목록 렌더링
-    function renderMessages(messages) {
-      const listEl = document.getElementById("messagesList");
-      if (!messages || messages.length === 0) {
-        listEl.innerHTML = '<div class="empty-state">등록된 글이 없습니다.</div>';
-        return;
-      }
-
-      listEl.innerHTML = messages.map((m, idx) => `
-        <div class="msg-card">
-          <div class="msg-text" id="text-${idx}">${escapeHtml(m.text)}</div>
-          <div class="msg-meta">
-            <span>${m.time || ""}</span>
-            <button class="copy-btn" onclick="copyText(${idx}, this)">📋 복사하기</button>
-          </div>
-        </div>
-      `).join("");
-    }
-
-    // 3. 데이터 저장하기
-    async function saveMessage() {
-      const input = document.getElementById("textInput");
-      const text = input.value.trim();
-      const btn = document.getElementById("saveBtn");
-
-      if (!text) {
-        alert("내용을 입력해주세요.");
-        return;
-      }
-
-      btn.disabled = true;
-      btn.innerText = "저장 중...";
-
-      try {
-        // 기존 데이터 가져오기
-        let current = [];
-        try {
-          const res = await fetch(API_URL);
-          if (res.ok) current = await res.json();
-        } catch (e) {}
-
-        // 최신 글이 맨 위로 오도록 추가
-        const newItem = {
-          text: text,
-          time: new Date().toLocaleString("ko-KR")
-        };
-        const updated = [newItem, ...current].slice(0, 50); // 최근 50개 유지
-
-        // 클라우드 DB에 업데이트
-        await fetch(API_URL, {
-          method: "POST",
-          body: JSON.stringify(updated)
+        const res = await fetch(apiEndpoint, {
+          headers: { 'Accept': 'application/vnd.github.v3+json' }
         });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        if (res.status === 404) return { sha: null, data: [] };
+        
+        const json = await res.json();
+        // GitHub API는 파일 내용을 Base64로 인코딩하여 반환합니다.
+        const contentStr = decodeURIComponent(escape(atob(json.content)));
+        return { sha: json.sha, data: JSON.parse(contentStr) };
+      } catch (e) {
+        console.error("데이터 로드 실패:", e);
+        return { sha: null, data: [] };
+      }
+    }
 
-        input.value = "";
-        renderMessages(updated);
+    // 2. 화면에 표시
+    async function renderPosts() {
+      const { data } = await fetchPosts();
+      const listDiv = document.getElementById("postsList");
+      listDiv.innerHTML = "<h3>글 목록</h3>";
+      data.reverse().forEach(post => {
+        const item = document.createElement("div");
+        item.className = "post";
+        item.innerHTML = `<strong>${post.name}</strong> <small>(${post.time})</small><p>${post.message}</p>`;
+        listDiv.appendChild(item);
+      });
+    }
+
+    // 3. GitHub API로 posts.json 파일에 새 커밋 푸시
+    document.getElementById("saveBtn").addEventListener("click", async () => {
+      const name = document.getElementById("name").value.trim();
+      const message = document.getElementById("message").value.trim();
+      if (!name || !message) return alert("입력값을 확인하세요.");
+
+      const btn = document.getElementById("saveBtn");
+      btn.disabled = true;
+      btn.innerText = "GitHub에 커밋 중...";
+
+      try {
+        const { sha, data } = await fetchPosts();
+        
+        // 새 글 추가
+        data.push({
+          name: name,
+          message: message,
+          time: new Date().toLocaleString()
+        });
+
+        // Base64 UTF-8 인코딩
+        const updatedContent = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+
+        // GitHub REST API 파일 수정 (커밋 생성)
+        const commitRes = await fetch(apiEndpoint, {
+          method: "PUT",
+          headers: {
+            "Authorization": `Bearer ${GITHUB_TOKEN}`,
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            message: `새 게시글 작성: ${name}`,
+            content: updatedContent,
+            sha: sha || undefined
+          })
+        });
+
+        if (!commitRes.ok) throw new Error("커밋 실패: " + commitRes.statusText);
+
+        alert("GitHub에 성공적으로 저장되었습니다!");
+        document.getElementById("name").value = "";
+        document.getElementById("message").value = "";
+        await renderPosts();
       } catch (err) {
-        alert("저장 중 오류가 발생했습니다.");
+        alert("오류: " + err.message);
       } finally {
         btn.disabled = false;
-        btn.innerText = "DB에 등록하기";
+        btn.innerText = "GitHub에 커밋하기";
       }
-    }
+    });
 
-    // 4. 복사 기능
-    function copyText(index, btn) {
-      const el = document.getElementById(`text-${index}`);
-      navigator.clipboard.writeText(el.innerText).then(() => {
-        const originalText = btn.innerText;
-        btn.innerText = "✅ 복사됨!";
-        btn.style.background = "#10b981";
-        btn.style.color = "#ffffff";
-        setTimeout(() => {
-          btn.innerText = originalText;
-          btn.style.background = "";
-          btn.style.color = "";
-        }, 1500);
-      });
-    }
-
-    function escapeHtml(string) {
-      return String(string).replace(/[&<>"']/g, function (s) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[s];
-      });
-    }
-
-    // 페이지 진입 시 로드
-    loadMessages();
+    renderPosts();
   </script>
 </body>
 </html>
